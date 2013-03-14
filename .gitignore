@@ -1,0 +1,5 @@
+*.sw?
+*.dSYM
+.DS_Store
+global_sum_send
+serial_sum
