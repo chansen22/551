@@ -12,7 +12,7 @@
 
 
 void pivot_on_row(int row, double **matrix, double *answer_vector);
-void convert_to_upper_triangle(int row, int col, double **matrix, double *answer_vector);
+void convert_to_upper_triangle(int row, double **matrix, double *answer_vector);
 void back_subsitution(double **matrix, double *answer_vector, double *answers);
 
 void fill_matrix(double **matrix, double **matrix_copy);
@@ -48,6 +48,7 @@ int main(int argc, char *argv[]) {
   double *answer_vector_copy = malloc(sizeof(double) * SIZE_OF_MATRIX);
   double *answers            = malloc(sizeof(double) * SIZE_OF_MATRIX);
 
+
   for (i = 0; i < SIZE_OF_MATRIX; ++i) {
     matrix[i]      = malloc(sizeof(double) * SIZE_OF_MATRIX);
     matrix_copy[i] = malloc(sizeof(double) * SIZE_OF_MATRIX);
@@ -69,8 +70,9 @@ int main(int argc, char *argv[]) {
     pivot_on_row(row, matrix, answer_vector);
 
     #pragma omp parallel for
-      for (i = row + 1; i < SIZE_OF_MATRIX; ++i)
-        convert_to_upper_triangle(i, row, matrix, answer_vector);
+      for (i = 0; i < SIZE_OF_MATRIX; ++i) {
+        convert_to_upper_triangle(row, matrix, answer_vector);
+      }
   }
   back_subsitution(matrix, answer_vector, answers);
 
@@ -187,28 +189,41 @@ void pivot_on_row(int row, double **matrix, double *answer_vector) {
   }
   answer_vector[row] = answer_two[0];
   answer_vector[largest] = answer_one[0];
-  free(first_row);
-  free(second_row);
-  free(answer_one);
-  free(answer_two);
 }
 
-void convert_to_upper_triangle(int row, int col, double **matrix, double *answer_vector) {
+void convert_to_upper_triangle(int row, double **matrix, double *answer_vector) {
+  int i;
   int j;
-  double *row_copy = malloc(sizeof(double) * SIZE_OF_MATRIX);
-  double answer_copy;
+  int col = row;
+  int my_thread_id    = omp_get_thread_num();
+  double *row_copy    = malloc(sizeof(double) * SIZE_OF_MATRIX);
+  double *answer_copy = malloc(sizeof(double) * SIZE_OF_MATRIX);
+  double *multipliers = malloc(sizeof(double) * SIZE_OF_MATRIX);
 
-  double denominator = matrix[col][col];
-  double numerator = matrix[row][col];
+  // The row we're multiplying
 
-  for (j = 0; j < SIZE_OF_MATRIX; ++j)
-    row_copy[j] = matrix[col][j] * numerator / denominator;
+  double denominator = matrix[row][col];
+  double numerator;
 
-  for (j = 0; j < SIZE_OF_MATRIX; ++j)
-    matrix[row][j] = matrix[row][j] - row_copy[j];
+  for (i = my_thread_id * BLOCK_SIZE; i < BLOCK_SIZE + BLOCK_SIZE * my_thread_id; ++i) {
+    if (i <= row)
+      continue;
 
-  answer_copy = answer_vector[row-1] * numerator / denominator;
-  answer_vector[row] = answer_vector[row] - answer_copy;
+    numerator = matrix[i][col];
+    multipliers[i] = numerator / denominator;
 
-  free(row_copy);
+    for (j = 0; j < SIZE_OF_MATRIX; ++j)
+      row_copy[j] = matrix[row][j];
+
+    for (j = 0; j < SIZE_OF_MATRIX; ++j)
+      row_copy[j] = (row_copy[j] * numerator) / denominator;
+
+    for (j = 0; j < SIZE_OF_MATRIX; ++j)
+      matrix[i][j] = matrix[i][j] - row_copy[j];
+  }
+
+  for (i = row + 1; i < SIZE_OF_MATRIX; ++i) {
+    answer_copy[i]   = answer_vector[row] * multipliers[i];
+    answer_vector[i] = answer_vector[i] - answer_copy[i];
+  }
 }
