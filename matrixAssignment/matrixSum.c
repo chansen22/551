@@ -24,10 +24,10 @@ int BLOCK_SIZE;
 
 int main(int argc, char *argv[]) {
   int i;
+  int j;
   int row;
-  int col;
-  time_t start;
-  time_t finish;
+
+  double start, finish;
 
   if (argc != 3) {
     fprintf(stderr, "The arguments should be ./matrix_sum size_of_matrix number_of_threads\n");
@@ -54,42 +54,110 @@ int main(int argc, char *argv[]) {
   }
 
   srand48(time(NULL)); // seed random number
-
   fill_matrix(matrix, matrix_copy);
   fill_answer(answer_vector, answer_vector_copy);
+  //matrix[0][0] = 25;
+  //matrix[0][1] = 5;
+  //matrix[0][2] = 1;
+  //matrix[1][0] = 64;
+  //matrix[1][1] = 8;
+  //matrix[1][2] = 1;
+  //matrix[2][0] = 144;
+  //matrix[2][1] = 12;
+  //matrix[2][2] = 1;
+
+  //answer_vector[0] = 106.8;
+  //answer_vector[1] = 177.2;
+  //answer_vector[2] = 279.2;
+
+  //for (i = 0; i < 3; ++i)
+  //  answer_vector_copy[i] = answer_vector[i];
+
+  //for (i = 0; i < 3; ++i)
+  //  for (j = 0; j < 3; ++j)
+  //    matrix_copy[i][j] = matrix[i][j];
 
   // Start Timing
-  start = time(NULL);
+  start = omp_get_wtime();
+
+  //printf("Starting\n");
+  //for (i = 0; i < SIZE_OF_MATRIX; ++i) {
+  //  for (j = 0; j < SIZE_OF_MATRIX + 1; ++j) {
+  //    if (j == SIZE_OF_MATRIX)
+  //      printf("|[%g]", answer_vector[i]);
+  //    else
+  //      printf("[%g] ", matrix[i][j]);
+  //  }
+  //  printf("\n");
+  //}
+  //printf("\n");
 
   // Start elimination
   row = 0;
-  col = 0;
-  int j;
   for (row = 0; row < SIZE_OF_MATRIX; ++row) {
     pivot_on_row(row, matrix, answer_vector);
 
-    #pragma omp parallel for
+    //printf("After Pivot\n");
+    //for (i = 0; i < SIZE_OF_MATRIX; ++i) {
+    //  for (j = 0; j < SIZE_OF_MATRIX + 1; ++j) {
+    //    if (j == SIZE_OF_MATRIX)
+    //      printf("|[%g]", answer_vector[i]);
+    //    else
+    //      printf("[%g] ", matrix[i][j]);
+    //  }
+    //  printf("\n");
+    //}
+    //printf("\n");
+
+    #pragma omp parallel for private(i)
       for (i = row + 1; i < SIZE_OF_MATRIX; ++i)
         convert_to_upper_triangle(i, row, matrix, answer_vector);
+
+    //printf("After Annihilation\n");
+    //for (i = 0; i < SIZE_OF_MATRIX; ++i) {
+    //  for (j = 0; j < SIZE_OF_MATRIX + 1; ++j) {
+    //    if (j == SIZE_OF_MATRIX)
+    //      printf("|[%g]", answer_vector[i]);
+    //    else
+    //      printf("[%g] ", matrix[i][j]);
+    //  }
+    //  printf("\n");
+    //}
+    //printf("\n");
+    
   }
   back_subsitution(matrix, answer_vector, answers);
 
+  //for (i = 0; i < SIZE_OF_MATRIX; ++i)
+  //  printf("[%g] ", answers[i]);
+  //printf("\n");
+
   // Finish Timing
-  finish = time(NULL);
+  finish = omp_get_wtime();
 
-  double seconds = (double) difftime(finish, start);
+  //for (i = 0; i < SIZE_OF_MATRIX; ++i) {
+  //  for (j = 0; j < SIZE_OF_MATRIX; ++j) {
+  //    printf("[%g] ", matrix[i][j]);
+  //  }
+  //  printf("\n");
+  //}
 
-  printf("Time Taken: %f\n", seconds);
+  double seconds = finish - start;
+
+  printf("Time Taken: %g\n", seconds);
+
+  double total[SIZE_OF_MATRIX];
 
   double l2 = 0;
 
-  double total = 0;
   for (i = 0; i < SIZE_OF_MATRIX; ++i) {
+    total[i] = 0;
     for (j = 0; j < SIZE_OF_MATRIX; ++j) {
-      total = total + matrix_copy[i][j] * answers[j];
+      total[i] += matrix_copy[i][j] * answers[j];
+      //printf("Total at %d is %g\n", j, total[i]);
     }
-    l2 = l2 + pow( (total - answer_vector_copy[i]), 2);
-    total = 0;
+    l2 += pow( (total[i] - answer_vector_copy[i]), 2);
+    //printf("Answer vector copy is %g\n", answer_vector_copy[i]);
   }
 
   l2 = sqrt(l2);
@@ -125,17 +193,14 @@ void fill_answer(double *answer_vector, double *answer_vector_copy) {
 
 void back_subsitution(double **matrix, double *answer_vector, double *answers) {
   double tmp_answer = 0;
-  double tmp_subtraction = 0;
   int i;
   int j;
 
   for (i = SIZE_OF_MATRIX - 1; i >= 0 ; --i) {
     tmp_answer = answer_vector[i];
     // Subtraction
-    for (j = SIZE_OF_MATRIX - 1; j > i; --j) {
-      tmp_subtraction = matrix[i][j] * answers[j];
-      tmp_answer = tmp_answer - tmp_subtraction;
-    }
+    for (j = SIZE_OF_MATRIX - 1; j > i; --j)
+      tmp_answer = tmp_answer - (matrix[i][j] * answers[j]);
 
     // Division
     answers[i] = tmp_answer / matrix[i][i];
@@ -163,34 +228,16 @@ void pivot_on_row(int row, double **matrix, double *answer_vector) {
   if (row >= largest)
     return; // We're already the largest so no work needs to be done
 
-  double *first_row = malloc(sizeof(double) * SIZE_OF_MATRIX);
-  double *second_row = malloc(sizeof(double) * SIZE_OF_MATRIX);
-  double *answer_one = malloc(sizeof(double));
-  double *answer_two = malloc(sizeof(double));
-  answer_one[0] = answer_vector[row];
-  answer_two[0] = answer_vector[largest];
+  double *tmp;
+  double tmpAnswer;
 
-  //
-  // Copy rows
-  //
-  for (i = 0; i < SIZE_OF_MATRIX; ++i) {
-    first_row[i] = matrix[row][i];
-    second_row[i] = matrix[largest][i];
-  }
+  tmp = matrix[row];
+  matrix[row] = matrix[largest];
+  matrix[largest] = tmp;
+  tmpAnswer = answer_vector[largest];
+  answer_vector[largest] = answer_vector[row];
+  answer_vector[row] = tmpAnswer;
 
-  //
-  // Swap rows
-  //
-  for (i = 0; i < SIZE_OF_MATRIX; ++i) {
-    matrix[row][i] = second_row[i];
-    matrix[largest][i] = first_row[i];
-  }
-  answer_vector[row] = answer_two[0];
-  answer_vector[largest] = answer_one[0];
-  free(first_row);
-  free(second_row);
-  free(answer_one);
-  free(answer_two);
 }
 
 void convert_to_upper_triangle(int row, int col, double **matrix, double *answer_vector) {
@@ -201,13 +248,12 @@ void convert_to_upper_triangle(int row, int col, double **matrix, double *answer
   double denominator = matrix[col][col];
   double numerator = matrix[row][col];
 
-  for (j = 0; j < SIZE_OF_MATRIX; ++j)
+  for (j = 0; j < SIZE_OF_MATRIX; ++j) {
     row_copy[j] = matrix[col][j] * numerator / denominator;
-
-  for (j = 0; j < SIZE_OF_MATRIX; ++j)
     matrix[row][j] = matrix[row][j] - row_copy[j];
+  }
 
-  answer_copy = answer_vector[row-1] * numerator / denominator;
+  answer_copy = answer_vector[col] * numerator / denominator;
   answer_vector[row] = answer_vector[row] - answer_copy;
 
   free(row_copy);
